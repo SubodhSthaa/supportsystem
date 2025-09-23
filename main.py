@@ -1,0 +1,454 @@
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+import httpx
+import os
+import sqlite3
+import uuid
+import logging
+import json
+from datetime import datetime
+from typing import Optional
+
+# ----------------------------
+# Config
+# ----------------------------
+LMSTUDIO_URL = "http://localhost:1234/v1/chat/completions"
+MODEL_NAME = "openai/gpt-oss-20b"
+MAX_HISTORY_MESSAGES = 10
+MAX_TOKENS = 2048
+
+# ----------------------------
+# Logging
+# ----------------------------
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# ----------------------------
+# App initialization
+# ----------------------------
+app = FastAPI(title="Support Chatbot API", version="1.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # For development only
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ----------------------------
+# Database setup
+# ----------------------------
+DB_FILE = "support_system.db"
+
+def init_db():
+    """Initialize database with required tables"""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    # Tickets table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS tickets (
+            id TEXT PRIMARY KEY,
+            user TEXT NOT NULL,
+            email TEXT NOT NULL,
+            type TEXT NOT NULL,
+            description TEXT NOT NULL,
+            session_id TEXT,
+            status TEXT DEFAULT 'open',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    
+    # Chat sessions table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS chat_sessions (
+            id TEXT PRIMARY KEY,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    
+    # Chat history table (linked to sessions)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS chat_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (session_id) REFERENCES chat_sessions (id)
+        )
+    """)
+    
+    # Create indexes for better performance
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_history_session ON chat_history(session_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_tickets_type ON tickets(type)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status)")
+    
+    conn.commit()
+    conn.close()
+    logger.info("Database initialized successfully")
+
+init_db()
+
+# ----------------------------
+# Data models
+# ----------------------------
+class ChatMessage(BaseModel):
+    message: str
+    session_id: Optional[str] = None
+
+class TicketCreate(BaseModel):
+    user: str
+    email: str
+    type: str
+    description: str
+    session_id: Optional[str] = None
+
+# ----------------------------
+# Helper functions
+# ----------------------------
+def get_or_create_session(session_id: str) -> str:
+    """Get existing session or create new one"""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    # Check if session exists
+    cursor.execute("SELECT id FROM chat_sessions WHERE id = ?", (session_id,))
+    if not cursor.fetchone():
+        # Create new session
+        cursor.execute(
+            "INSERT INTO chat_sessions (id) VALUES (?)", 
+            (session_id,)
+        )
+        logger.info(f"Created new session: {session_id}")
+    else:
+        # Update last activity
+        cursor.execute(
+            "UPDATE chat_sessions SET last_activity = CURRENT_TIMESTAMP WHERE id = ?",
+            (session_id,)
+        )
+    
+    conn.commit()
+    conn.close()
+    return session_id
+
+def get_session_history(session_id: str) -> list:
+    """Get chat history for a specific session"""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT role, content FROM chat_history 
+        WHERE session_id = ? 
+        ORDER BY timestamp ASC
+    """, (session_id,))
+    
+    history = [{"role": row[0], "content": row[1]} for row in cursor.fetchall()]
+    conn.close()
+    return history
+
+def save_message_to_history(session_id: str, role: str, content: str):
+    """Save a message to chat history"""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        INSERT INTO chat_history (session_id, role, content) 
+        VALUES (?, ?, ?)
+    """, (session_id, role, content))
+    
+    conn.commit()
+    conn.close()
+
+def classify_issue_type(message: str) -> str:
+    """Classify the issue type based on message content"""
+    message_lower = message.lower()
+    
+    # E-Banking keywords
+    ebanking_keywords = [
+        'bank', 'banking', 'account', 'balance', 'transaction', 'transfer',
+        'payment', 'card', 'atm', 'online banking', 'mobile banking',
+        'deposit', 'withdrawal', 'loan', 'credit', 'debit'
+    ]
+    
+    # IT Support keywords
+    it_keywords = [
+        'password', 'login', 'computer', 'laptop', 'software', 'hardware',
+        'network', 'wifi', 'internet', 'email', 'printer', 'system',
+        'error', 'bug', 'crash', 'slow', 'virus', 'security', 'backup'
+    ]
+    
+    # Count keyword matches
+    ebanking_score = sum(1 for keyword in ebanking_keywords if keyword in message_lower)
+    it_score = sum(1 for keyword in it_keywords if keyword in message_lower)
+    
+    if ebanking_score > it_score and ebanking_score > 0:
+        return "E-Banking"
+    elif it_score > 0:
+        return "IT Support"
+    else:
+        return "General"
+
+async def get_ai_response(message: str, chat_history: list) -> tuple[str, str]:
+    """Get AI response from LM Studio"""
+    try:
+        # Prepare system prompt for IT support context
+        system_prompt = """You are a helpful IT Support Assistant. Your role is to:
+
+1. Provide clear, step-by-step solutions for technical problems
+2. Ask clarifying questions when needed
+3. Be professional but friendly
+4. Focus on IT support, e-banking issues, and general technical help
+5. Keep responses concise but comprehensive
+6. If you cannot solve an issue completely, acknowledge it and suggest creating a support ticket
+
+Common areas you help with:
+- Password resets and login issues
+- Software troubleshooting
+- Hardware problems
+- Network connectivity
+- E-banking and online banking issues
+- Email and communication tools
+- System performance issues
+
+Always be helpful and solution-oriented."""
+
+        # Build conversation history
+        messages = [{"role": "system", "content": system_prompt}]
+        
+        # Add recent chat history (limit to prevent token overflow)
+        recent_history = chat_history[-MAX_HISTORY_MESSAGES:] if len(chat_history) > MAX_HISTORY_MESSAGES else chat_history
+        messages.extend(recent_history)
+        
+        # Add current user message
+        messages.append({"role": "user", "content": message})
+
+        payload = {
+            "model": MODEL_NAME,
+            "messages": messages,
+            "max_tokens": MAX_TOKENS,
+            "temperature": 0.7,
+            "stream": False
+        }
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(LMSTUDIO_URL, json=payload)
+            response.raise_for_status()
+            result = response.json()
+
+        # Extract response content
+        choice = result["choices"][0]["message"]
+        ai_response = choice.get("content") or choice.get("reasoning_content") or "I apologize, but I couldn't generate a proper response. Please try rephrasing your question."
+        
+        # Classify the issue type
+        issue_type = classify_issue_type(message)
+        
+        logger.info(f"AI response generated successfully. Issue type: {issue_type}")
+        return ai_response, issue_type
+
+    except httpx.TimeoutException:
+        logger.error("LM Studio request timed out")
+        return "⚠️ The AI service is taking too long to respond. Please try again in a moment.", "General"
+    except httpx.HTTPStatusError as e:
+        logger.error(f"LM Studio HTTP error: {e.response.status_code}")
+        return "⚠️ The AI service is currently unavailable. Please try again later.", "General"
+    except Exception as e:
+        logger.error(f"Unexpected error in AI response: {str(e)}")
+        return "⚠️ I encountered an unexpected error. Please try again or contact support if the issue persists.", "General"
+
+# ----------------------------
+# API Endpoints
+# ----------------------------
+@app.get("/")
+async def get_index():
+    """Serve the main HTML page"""
+    if os.path.exists("index.html"):
+        return FileResponse("index.html")
+    return JSONResponse({"error": "index.html not found"}, status_code=404)
+
+@app.get("/app.js")
+async def get_app_js():
+    """Serve the main JavaScript file"""
+    if os.path.exists("app.js"):
+        return FileResponse("app.js", media_type="application/javascript")
+    return JSONResponse({"error": "app.js not found"}, status_code=404)
+
+@app.get("/style.css")
+async def get_style_css():
+    """Serve the main CSS file"""
+    if os.path.exists("style.css"):
+        return FileResponse("style.css", media_type="text/css")
+    return JSONResponse({"error": "style.css not found"}, status_code=404)
+
+@app.post("/chat")
+async def chat_endpoint(data: ChatMessage, request: Request):
+    """Handle chat messages"""
+    try:
+        # Get or create session
+        session_id = data.session_id or request.headers.get("Session-ID", f"session_{uuid.uuid4()}")
+        session_id = get_or_create_session(session_id)
+        
+        # Get chat history for this session
+        chat_history = get_session_history(session_id)
+        
+        # Get AI response
+        ai_response, issue_type = await get_ai_response(data.message, chat_history)
+        
+        # Save both user message and AI response to history
+        save_message_to_history(session_id, "user", data.message)
+        save_message_to_history(session_id, "assistant", ai_response)
+        
+        logger.info(f"Chat processed for session {session_id[:8]}... - Issue type: {issue_type}")
+        
+        return JSONResponse({
+            "response": ai_response,
+            "category": issue_type,
+            "session_id": session_id
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in chat endpoint: {str(e)}")
+        return JSONResponse(
+            {"error": "Internal server error", "response": "⚠️ Sorry, I encountered an error. Please try again."},
+            status_code=500
+        )
+
+@app.post("/ticket")
+async def create_ticket(ticket_data: dict):
+    """Create a new support ticket"""
+    try:
+        # Generate unique ticket ID
+        ticket_id = f"TKT-{datetime.now().strftime('%Y%m%d')}-{str(uuid.uuid4())[:8].upper()}"
+        
+        # Validate required fields
+        required_fields = ['user', 'email', 'type', 'description']
+        for field in required_fields:
+            if field not in ticket_data or not ticket_data[field].strip():
+                raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
+        
+        # Insert ticket into database
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            INSERT INTO tickets (id, user, email, type, description, session_id, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            ticket_id,
+            ticket_data['user'].strip(),
+            ticket_data['email'].strip(),
+            ticket_data['type'].strip(),
+            ticket_data['description'].strip(),
+            ticket_data.get('session_id'),
+            'open'
+        ))
+        
+        conn.commit()
+        conn.close()
+        
+        # Prepare response
+        ticket_response = {
+            "id": ticket_id,
+            "user": ticket_data['user'],
+            "email": ticket_data['email'],
+            "type": ticket_data['type'],
+            "description": ticket_data['description'],
+            "status": "open",
+            "created_at": datetime.now().isoformat()
+        }
+        
+        logger.info(f"Ticket created: {ticket_id} for {ticket_data['email']}")
+        
+        return JSONResponse({
+            "message": "Ticket created successfully!",
+            "ticket": ticket_response
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating ticket: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create ticket")
+
+@app.get("/tickets")
+async def list_tickets():
+    """Get all tickets"""
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT id, user, email, type, description, status, created_at, updated_at
+            FROM tickets 
+            ORDER BY created_at DESC
+        """)
+        
+        tickets = []
+        for row in cursor.fetchall():
+            tickets.append({
+                "id": row[0],
+                "user": row[1],
+                "email": row[2],
+                "type": row[3],
+                "description": row[4],
+                "status": row[5],
+                "created_at": row[6],
+                "updated_at": row[7]
+            })
+        
+        conn.close()
+        
+        return JSONResponse({"tickets": tickets})
+        
+    except Exception as e:
+        logger.error(f"Error fetching tickets: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to fetch tickets")
+
+@app.get("/sessions/{session_id}/history")
+async def get_session_chat_history(session_id: str):
+    """Get chat history for a specific session"""
+    try:
+        history = get_session_history(session_id)
+        return JSONResponse({
+            "session_id": session_id,
+            "history": history
+        })
+    except Exception as e:
+        logger.error(f"Error fetching session history: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to fetch session history")
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    return JSONResponse({
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "version": "1.0.0"
+    })
+
+# ----------------------------
+# Error handlers
+# ----------------------------
+@app.exception_handler(404)
+async def not_found_handler(request: Request, exc):
+    return JSONResponse(
+        status_code=404,
+        content={"error": "Endpoint not found"}
+    )
+
+@app.exception_handler(500)
+async def internal_error_handler(request: Request, exc):
+    logger.error(f"Internal server error: {str(exc)}")
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Internal server error"}
+    )
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
