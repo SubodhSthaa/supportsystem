@@ -14,10 +14,46 @@ class BankingSupportApp {
         this.chatSessions = new Map(); // Store chat sessions per user
         this.currentChatSession = null;
         this.nextSessionId = 1;
+        this.googleClientId = null;
+        this.googleEnabled = false;
         
         this.initializeData();
         this.bindEvents();
+        this.initializeGoogleAuth();
         this.checkAuthState();
+    }
+
+    async initializeGoogleAuth() {
+        try {
+            const response = await fetch('http://localhost:8000/auth/config');
+            const config = await response.json();
+            
+            this.googleClientId = config.google_client_id;
+            this.googleEnabled = config.google_enabled;
+            
+            if (this.googleEnabled) {
+                // Update the Google Sign-In button with the client ID
+                const googleOnload = document.getElementById('g_id_onload');
+                if (googleOnload) {
+                    googleOnload.setAttribute('data-client_id', this.googleClientId);
+                }
+                
+                // Show Google sign-in container
+                const googleContainer = document.getElementById('google-signin-container');
+                if (googleContainer) {
+                    googleContainer.style.display = 'block';
+                }
+            } else {
+                // Hide Google sign-in if not configured
+                const googleContainer = document.getElementById('google-signin-container');
+                if (googleContainer) {
+                    googleContainer.style.display = 'none';
+                }
+            }
+        } catch (error) {
+            console.error('Failed to initialize Google Auth:', error);
+            this.googleEnabled = false;
+        }
     }
 
     initializeData() {
@@ -230,20 +266,80 @@ class BankingSupportApp {
         });
     }
 
+    async handleGoogleSignIn(response) {
+        try {
+            const authResponse = await fetch('http://localhost:8000/auth/google', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    credential: response.credential
+                })
+            });
+
+            const data = await authResponse.json();
+            
+            if (authResponse.ok && data.success) {
+                // Store the token
+                localStorage.setItem('auth-token', data.token);
+                
+                // Set current user from Google data
+                this.currentUser = {
+                    id: data.user.id,
+                    username: data.user.email,
+                    name: data.user.name,
+                    email: data.user.email,
+                    role: data.user.role,
+                    department: data.user.department,
+                    picture: data.user.picture,
+                    active: true
+                };
+                
+                this.showMainApp();
+                
+                // Hide any login errors
+                const errorEl = document.getElementById('login-error');
+                if (errorEl) {
+                    errorEl.classList.add('hidden');
+                }
+            } else {
+                throw new Error(data.detail || 'Google authentication failed');
+            }
+        } catch (error) {
+            console.error('Google Sign-In error:', error);
+            const errorEl = document.getElementById('login-error');
+            if (errorEl) {
+                errorEl.textContent = 'Google Sign-In failed. Please try again.';
+                errorEl.classList.remove('hidden');
+            }
+        }
+    }
+
     checkAuthState() {
         const token = localStorage.getItem('auth-token');
         if (token) {
             try {
                 // Simulate JWT decode
                 const payload = JSON.parse(atob(token.split('.')[1]));
-                const user = this.users.find(u => u.id === payload.userId);
-                if (user && payload.exp > Date.now() / 1000) {
-                    this.currentUser = user;
+                
+                if (payload.exp > Date.now() / 1000) {
+                    // Create user object from token payload
+                    this.currentUser = {
+                        id: payload.user_id,
+                        username: payload.email,
+                        name: payload.name,
+                        email: payload.email,
+                        role: payload.role,
+                        department: payload.department || 'General',
+                        active: true
+                    };
                     this.showMainApp();
                     return;
                 }
             } catch (e) {
                 // Invalid token
+                console.error('Invalid token:', e);
             }
         }
         this.showLoginScreen();
@@ -305,8 +401,15 @@ class BankingSupportApp {
 
     setupUserInterface() {
         // Update user info
-        document.getElementById('user-info').textContent = 
-            `${this.currentUser.name} (${this.formatRole(this.currentUser.role)})`;
+        const userInfoEl = document.getElementById('user-info');
+        if (this.currentUser.picture) {
+            userInfoEl.innerHTML = `
+                <img src="${this.currentUser.picture}" alt="Profile" class="user-avatar">
+                <span>${this.currentUser.name} (${this.formatRole(this.currentUser.role)})</span>
+            `;
+        } else {
+            userInfoEl.textContent = `${this.currentUser.name} (${this.formatRole(this.currentUser.role)})`;
+        }
 
         // Setup navigation based on role
         const navLinks = document.getElementById('nav-links');

@@ -10,6 +10,9 @@ import logging
 import json
 from datetime import datetime
 from typing import Optional
+from google.auth.transport import requests as google_requests
+from google.oauth2 import id_token
+import secrets
 
 # ----------------------------
 # Config
@@ -18,6 +21,10 @@ LMSTUDIO_URL = "http://localhost:1234/v1/chat/completions"
 MODEL_NAME = "openai/gpt-oss-20b"
 MAX_HISTORY_MESSAGES = 10
 MAX_TOKENS = 2048
+
+# Google OAuth Config
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "your-google-client-id.apps.googleusercontent.com")
+JWT_SECRET = os.getenv("JWT_SECRET", secrets.token_urlsafe(32))
 
 # ----------------------------
 # Logging
@@ -72,6 +79,28 @@ def init_db():
         )
     """)
     
+    # Users table for Google SSO
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            google_id TEXT UNIQUE,
+            email TEXT UNIQUE NOT NULL,
+            name TEXT NOT NULL,
+            picture TEXT,
+            role TEXT DEFAULT 'end_user',
+            department TEXT DEFAULT 'General',
+            active BOOLEAN DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    
+    # Insert default admin user if not exists
+    cursor.execute("""
+        INSERT OR IGNORE INTO users (email, name, role, department, google_id)
+        VALUES ('admin@company.com', 'System Administrator', 'admin', 'Administration', 'local_admin')
+    """)
+    
     # Chat history table (linked to sessions)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS chat_history (
@@ -90,6 +119,8 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_history_user ON chat_history(user_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_tickets_type ON tickets(type)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id)")
     
     conn.commit()
     conn.close()
@@ -111,6 +142,18 @@ class TicketCreate(BaseModel):
     type: str
     description: str
     session_id: Optional[str] = None
+
+class GoogleAuthRequest(BaseModel):
+    credential: str
+
+class UserResponse(BaseModel):
+    id: int
+    email: str
+    name: str
+    picture: Optional[str]
+    role: str
+    department: str
+    active: bool
 
 # ----------------------------
 # Helper functions
@@ -463,6 +506,146 @@ async def get_user_sessions(user_id: int):
     except Exception as e:
         logger.error(f"Error fetching user sessions: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to fetch user sessions")
+
+def create_jwt_token(user_data: dict) -> str:
+    """Create a simple JWT-like token for the user"""
+    import base64
+    import hmac
+    import hashlib
+    
+    header = {"typ": "JWT", "alg": "HS256"}
+    payload = {
+        "user_id": user_data["id"],
+        "email": user_data["email"],
+        "name": user_data["name"],
+        "role": user_data["role"],
+        "exp": int(datetime.now().timestamp()) + (24 * 60 * 60)  # 24 hours
+    }
+    
+    header_b64 = base64.urlsafe_b64encode(json.dumps(header).encode()).decode().rstrip('=')
+    payload_b64 = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip('=')
+    
+    signature = hmac.new(
+        JWT_SECRET.encode(),
+        f"{header_b64}.{payload_b64}".encode(),
+        hashlib.sha256
+    ).digest()
+    signature_b64 = base64.urlsafe_b64encode(signature).decode().rstrip('=')
+    
+    return f"{header_b64}.{payload_b64}.{signature_b64}"
+
+def get_or_create_user(google_user_info: dict) -> dict:
+    """Get existing user or create new one from Google user info"""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    # Try to find existing user by Google ID or email
+    cursor.execute("""
+        SELECT id, google_id, email, name, picture, role, department, active
+        FROM users 
+        WHERE google_id = ? OR email = ?
+    """, (google_user_info["sub"], google_user_info["email"]))
+    
+    user = cursor.fetchone()
+    
+    if user:
+        # Update existing user info
+        cursor.execute("""
+            UPDATE users 
+            SET google_id = ?, name = ?, picture = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """, (google_user_info["sub"], google_user_info["name"], 
+              google_user_info.get("picture"), user[0]))
+        
+        user_data = {
+            "id": user[0],
+            "google_id": google_user_info["sub"],
+            "email": user[2],
+            "name": google_user_info["name"],
+            "picture": google_user_info.get("picture"),
+            "role": user[5],
+            "department": user[6],
+            "active": bool(user[7])
+        }
+    else:
+        # Create new user
+        # Determine role based on email domain or default to end_user
+        role = "admin" if google_user_info["email"].endswith("@company.com") else "end_user"
+        department = "Administration" if role == "admin" else "General"
+        
+        cursor.execute("""
+            INSERT INTO users (google_id, email, name, picture, role, department)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (google_user_info["sub"], google_user_info["email"], 
+              google_user_info["name"], google_user_info.get("picture"), 
+              role, department))
+        
+        user_id = cursor.lastrowid
+        user_data = {
+            "id": user_id,
+            "google_id": google_user_info["sub"],
+            "email": google_user_info["email"],
+            "name": google_user_info["name"],
+            "picture": google_user_info.get("picture"),
+            "role": role,
+            "department": department,
+            "active": True
+        }
+    
+    conn.commit()
+    conn.close()
+    
+    return user_data
+
+@app.post("/auth/google")
+async def google_auth(auth_request: GoogleAuthRequest):
+    """Handle Google OAuth authentication"""
+    try:
+        # Verify the Google ID token
+        idinfo = id_token.verify_oauth2_token(
+            auth_request.credential, 
+            google_requests.Request(), 
+            GOOGLE_CLIENT_ID
+        )
+        
+        # Get or create user
+        user_data = get_or_create_user(idinfo)
+        
+        if not user_data["active"]:
+            raise HTTPException(status_code=403, detail="Account is deactivated")
+        
+        # Create JWT token
+        token = create_jwt_token(user_data)
+        
+        logger.info(f"Google SSO login successful for {user_data['email']}")
+        
+        return JSONResponse({
+            "success": True,
+            "token": token,
+            "user": {
+                "id": user_data["id"],
+                "email": user_data["email"],
+                "name": user_data["name"],
+                "picture": user_data["picture"],
+                "role": user_data["role"],
+                "department": user_data["department"]
+            }
+        })
+        
+    except ValueError as e:
+        logger.error(f"Invalid Google token: {str(e)}")
+        raise HTTPException(status_code=400, detail="Invalid Google token")
+    except Exception as e:
+        logger.error(f"Google auth error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Authentication failed")
+
+@app.get("/auth/config")
+async def get_auth_config():
+    """Get authentication configuration for frontend"""
+    return JSONResponse({
+        "google_client_id": GOOGLE_CLIENT_ID,
+        "google_enabled": bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_ID != "your-google-client-id.apps.googleusercontent.com")
+    })
 
 @app.get("/health")
 async def health_check():

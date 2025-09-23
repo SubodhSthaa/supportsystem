@@ -804,6 +804,49 @@ select.form-control {
     margin-bottom: var(--space-4);
 }
 
+.login-divider {
+    text-align: center;
+    margin: var(--space-24) 0;
+    position: relative;
+}
+
+.login-divider::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: var(--color-border);
+}
+
+.login-divider span {
+    background: var(--color-surface);
+    padding: 0 var(--space-16);
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+}
+
+.google-signin-container {
+    display: none;
+    text-align: center;
+    margin-bottom: var(--space-24);
+}
+
+.user-avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    margin-right: var(--space-8);
+    vertical-align: middle;
+}
+
+.user-info {
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+}
+
 /* Header Styles */
 .header {
     background: var(--color-surface);
