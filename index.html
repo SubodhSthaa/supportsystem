@@ -61,15 +61,26 @@
         <main class="main-content">
             <!-- End User Chat Interface -->
             <div id="chat-interface" class="view hidden">
-                <div class="chat-container">
-                    <div class="chat-header">
-                        <h2>Support Chat</h2>
-                        <p>Describe your issue and we'll help you find a solution</p>
+                <div class="chat-layout">
+                    <div class="chat-sidebar">
+                        <div class="chat-sidebar-header">
+                            <h3>Chat History</h3>
+                            <button id="new-chat-btn" class="btn btn--primary btn--sm">New Chat</button>
+                        </div>
+                        <div id="chat-history" class="chat-history"></div>
                     </div>
-                    <div class="chat-messages" id="chat-messages"></div>
-                    <div class="chat-input-container">
-                        <input type="text" id="chat-input" class="form-control" placeholder="Type your issue here...">
-                        <button id="send-message" class="btn btn--primary">Send</button>
+                    <div class="chat-main">
+                        <div class="chat-container">
+                            <div class="chat-header">
+                                <h2>Support Chat</h2>
+                                <p>Describe your issue and we'll help you find a solution</p>
+                            </div>
+                            <div class="chat-messages" id="chat-messages"></div>
+                            <div class="chat-input-container">
+                                <input type="text" id="chat-input" class="form-control" placeholder="Type your issue here...">
+                                <button id="send-message" class="btn btn--primary">Send</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

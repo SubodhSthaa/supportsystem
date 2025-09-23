@@ -11,6 +11,9 @@ class BankingSupportApp {
         this.nextTicketId = 1002;
         this.nextUserId = 4;
         this.sessionId = null; // for backend chat session continuity
+        this.chatSessions = new Map(); // Store chat sessions per user
+        this.currentChatSession = null;
+        this.nextSessionId = 1;
         
         this.initializeData();
         this.bindEvents();
@@ -153,6 +156,11 @@ class BankingSupportApp {
             }
         });
 
+        // Chat history management
+        document.getElementById('new-chat-btn').addEventListener('click', () => {
+            this.startNewChat();
+        });
+
         // Modal events
         document.getElementById('close-modal').addEventListener('click', () => {
             this.closeModal('ticket-modal');
@@ -275,6 +283,8 @@ class BankingSupportApp {
     handleLogout() {
         localStorage.removeItem('auth-token');
         this.currentUser = null;
+        this.currentChatSession = null;
+        this.sessionId = null;
         this.showLoginScreen();
     }
 
@@ -289,6 +299,7 @@ class BankingSupportApp {
         document.getElementById('login-screen').classList.add('hidden');
         document.getElementById('main-app').classList.remove('hidden');
         this.setupUserInterface();
+        this.loadUserChatSessions();
         this.showDefaultView();
     }
 
@@ -404,11 +415,186 @@ class BankingSupportApp {
         }
     }
 
+    // Chat Session Management
+    loadUserChatSessions() {
+        const userSessions = this.getUserChatSessions();
+        this.renderChatHistory(userSessions);
+    }
+
+    getUserChatSessions() {
+        if (!this.chatSessions.has(this.currentUser.id)) {
+            this.chatSessions.set(this.currentUser.id, []);
+        }
+        return this.chatSessions.get(this.currentUser.id);
+    }
+
+    createNewChatSession() {
+        const session = {
+            id: `session_${this.currentUser.id}_${this.nextSessionId++}`,
+            userId: this.currentUser.id,
+            title: 'New Chat',
+            messages: [],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            isActive: true
+        };
+        
+        const userSessions = this.getUserChatSessions();
+        
+        // Mark all other sessions as inactive
+        userSessions.forEach(s => s.isActive = false);
+        
+        // Add new session
+        userSessions.unshift(session);
+        
+        this.currentChatSession = session;
+        this.sessionId = session.id;
+        
+        this.renderChatHistory(userSessions);
+        return session;
+    }
+
+    switchToChatSession(sessionId) {
+        const userSessions = this.getUserChatSessions();
+        const session = userSessions.find(s => s.id === sessionId);
+        
+        if (!session) return;
+        
+        // Mark all sessions as inactive
+        userSessions.forEach(s => s.isActive = false);
+        
+        // Activate selected session
+        session.isActive = true;
+        this.currentChatSession = session;
+        this.sessionId = session.id;
+        
+        // Load chat messages
+        this.loadChatMessages(session);
+        this.renderChatHistory(userSessions);
+    }
+
+    loadChatMessages(session) {
+        const messagesEl = document.getElementById('chat-messages');
+        messagesEl.innerHTML = '';
+        
+        if (session.messages.length === 0) {
+            this.addBotMessage("Hello! I'm here to help you with technical support. Please describe your issue and I'll try to find a solution for you.");
+        } else {
+            session.messages.forEach(message => {
+                if (message.role === 'user') {
+                    this.addUserMessage(message.content, false);
+                } else {
+                    this.addBotMessage(message.content, false);
+                }
+            });
+        }
+    }
+
+    updateChatSessionTitle(sessionId, firstMessage) {
+        const userSessions = this.getUserChatSessions();
+        const session = userSessions.find(s => s.id === sessionId);
+        
+        if (session && session.title === 'New Chat') {
+            // Generate title from first message (first 50 characters)
+            const title = firstMessage.length > 50 
+                ? firstMessage.substring(0, 50) + '...'
+                : firstMessage;
+            session.title = title;
+            session.updatedAt = new Date().toISOString();
+            this.renderChatHistory(this.getUserChatSessions());
+        }
+    }
+
+    saveChatMessage(role, content) {
+        if (!this.currentChatSession) {
+            this.createNewChatSession();
+        }
+        
+        const message = {
+            role,
+            content,
+            timestamp: new Date().toISOString()
+        };
+        
+        this.currentChatSession.messages.push(message);
+        this.currentChatSession.updatedAt = new Date().toISOString();
+        
+        // Update title if this is the first user message
+        if (role === 'user' && this.currentChatSession.messages.filter(m => m.role === 'user').length === 1) {
+            this.updateChatSessionTitle(this.currentChatSession.id, content);
+        }
+    }
+
+    deleteChatSession(sessionId) {
+        const userSessions = this.getUserChatSessions();
+        const sessionIndex = userSessions.findIndex(s => s.id === sessionId);
+        
+        if (sessionIndex === -1) return;
+        
+        const wasActive = userSessions[sessionIndex].isActive;
+        userSessions.splice(sessionIndex, 1);
+        
+        // If we deleted the active session, switch to the most recent one or create new
+        if (wasActive) {
+            if (userSessions.length > 0) {
+                this.switchToChatSession(userSessions[0].id);
+            } else {
+                this.startNewChat();
+            }
+        } else {
+            this.renderChatHistory(userSessions);
+        }
+    }
+
+    startNewChat() {
+        this.createNewChatSession();
+        const messagesEl = document.getElementById('chat-messages');
+        messagesEl.innerHTML = '';
+        this.addBotMessage("Hello! I'm here to help you with technical support. Please describe your issue and I'll try to find a solution for you.");
+    }
+
+    renderChatHistory(sessions) {
+        const historyEl = document.getElementById('chat-history');
+        
+        if (sessions.length === 0) {
+            historyEl.innerHTML = '<div class="chat-history-empty">No chat history yet</div>';
+            return;
+        }
+        
+        historyEl.innerHTML = sessions.map(session => `
+            <div class="chat-history-item ${session.isActive ? 'active' : ''}" 
+                 onclick="app.switchToChatSession('${session.id}')">
+                <div class="chat-history-content">
+                    <div class="chat-history-title">${this.escapeHtml(session.title)}</div>
+                    <div class="chat-history-date">${this.formatDate(session.updatedAt)}</div>
+                    <div class="chat-history-preview">
+                        ${session.messages.length} messages
+                    </div>
+                </div>
+                <button class="chat-history-delete" 
+                        onclick="event.stopPropagation(); app.deleteChatSession('${session.id}')"
+                        title="Delete chat">
+                    ×
+                </button>
+            </div>
+        `).join('');
+    }
     // Chat Interface
     initializeChat() {
-        const messagesEl = document.getElementById('chat-messages');
-        if (!messagesEl.hasChildNodes() || messagesEl.children.length === 0) {
-            this.addBotMessage("Hello! I'm here to help you with technical support. Please describe your issue and I'll try to find a solution for you.");
+        // Load or create chat session
+        const userSessions = this.getUserChatSessions();
+        const activeSession = userSessions.find(s => s.isActive);
+        
+        if (activeSession) {
+            this.currentChatSession = activeSession;
+            this.sessionId = activeSession.id;
+            this.loadChatMessages(activeSession);
+        } else if (userSessions.length > 0) {
+            // Switch to most recent session
+            this.switchToChatSession(userSessions[0].id);
+        } else {
+            // Create first session
+            this.startNewChat();
         }
     }
 
@@ -423,16 +609,20 @@ class BankingSupportApp {
         await this.processChatMessage(message);
     }
 
-    addUserMessage(message) {
+    addUserMessage(message, saveToHistory = true) {
         const messagesEl = document.getElementById('chat-messages');
         const messageEl = document.createElement('div');
         messageEl.className = 'message user';
         messageEl.innerHTML = `<div class="message-content">${this.escapeHtml(message)}</div>`;
         messagesEl.appendChild(messageEl);
         messagesEl.scrollTop = messagesEl.scrollHeight;
+        
+        if (saveToHistory) {
+            this.saveChatMessage('user', message);
+        }
     }
 
-    addBotMessage(message, includeTicketOption = false) {
+    addBotMessage(message, includeTicketOption = false, saveToHistory = true) {
         const messagesEl = document.getElementById('chat-messages');
         const messageEl = document.createElement('div');
         messageEl.className = 'message bot';
@@ -462,6 +652,10 @@ class BankingSupportApp {
         }
         
         messagesEl.scrollTop = messagesEl.scrollHeight;
+        
+        if (saveToHistory) {
+            this.saveChatMessage('assistant', message);
+        }
     }
 
     async processChatMessage(message) {
@@ -484,7 +678,8 @@ class BankingSupportApp {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         message: message,
-                        session_id: this.sessionId
+                        session_id: this.sessionId,
+                        user_id: this.currentUser.id
                     })
                 });
                 const data = await resp.json();

@@ -77,6 +77,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS chat_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             session_id TEXT NOT NULL,
+            user_id INTEGER,
             role TEXT NOT NULL,
             content TEXT NOT NULL,
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -86,6 +87,7 @@ def init_db():
     
     # Create indexes for better performance
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_history_session ON chat_history(session_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_history_user ON chat_history(user_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_tickets_type ON tickets(type)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status)")
     
@@ -101,6 +103,7 @@ init_db()
 class ChatMessage(BaseModel):
     message: str
     session_id: Optional[str] = None
+    user_id: Optional[int] = None
 
 class TicketCreate(BaseModel):
     user: str
@@ -152,15 +155,15 @@ def get_session_history(session_id: str) -> list:
     conn.close()
     return history
 
-def save_message_to_history(session_id: str, role: str, content: str):
+def save_message_to_history(session_id: str, role: str, content: str, user_id: Optional[int] = None):
     """Save a message to chat history"""
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     
     cursor.execute("""
-        INSERT INTO chat_history (session_id, role, content) 
-        VALUES (?, ?, ?)
-    """, (session_id, role, content))
+        INSERT INTO chat_history (session_id, user_id, role, content) 
+        VALUES (?, ?, ?, ?)
+    """, (session_id, user_id, role, content))
     
     conn.commit()
     conn.close()
@@ -300,8 +303,8 @@ async def chat_endpoint(data: ChatMessage, request: Request):
         ai_response, issue_type = await get_ai_response(data.message, chat_history)
         
         # Save both user message and AI response to history
-        save_message_to_history(session_id, "user", data.message)
-        save_message_to_history(session_id, "assistant", ai_response)
+        save_message_to_history(session_id, "user", data.message, data.user_id)
+        save_message_to_history(session_id, "assistant", ai_response, data.user_id)
         
         logger.info(f"Chat processed for session {session_id[:8]}... - Issue type: {issue_type}")
         
@@ -421,6 +424,45 @@ async def get_session_chat_history(session_id: str):
     except Exception as e:
         logger.error(f"Error fetching session history: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to fetch session history")
+
+@app.get("/users/{user_id}/sessions")
+async def get_user_sessions(user_id: int):
+    """Get all chat sessions for a specific user"""
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT DISTINCT ch.session_id, cs.created_at, cs.last_activity,
+                   COUNT(ch.id) as message_count,
+                   MIN(CASE WHEN ch.role = 'user' THEN ch.content END) as first_message
+            FROM chat_history ch
+            JOIN chat_sessions cs ON ch.session_id = cs.id
+            WHERE ch.user_id = ?
+            GROUP BY ch.session_id, cs.created_at, cs.last_activity
+            ORDER BY cs.last_activity DESC
+        """, (user_id,))
+        
+        sessions = []
+        for row in cursor.fetchall():
+            sessions.append({
+                "session_id": row[0],
+                "created_at": row[1],
+                "last_activity": row[2],
+                "message_count": row[3],
+                "first_message": row[4] or "New Chat"
+            })
+        
+        conn.close()
+        
+        return JSONResponse({
+            "user_id": user_id,
+            "sessions": sessions
+        })
+        
+    except Exception as e:
+        logger.error(f"Error fetching user sessions: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to fetch user sessions")
 
 @app.get("/health")
 async def health_check():
