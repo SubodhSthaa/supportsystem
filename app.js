@@ -23,6 +23,131 @@ class BankingSupportApp {
         this.checkAuthState();
     }
 
+    // Knowledge Base
+    renderKnowledgeBase() {
+        const container = document.getElementById('kb-results');
+        this.displayKnowledgeBase(this.knowledgeBase, container);
+
+        // Show "Add" button for admin/support
+        const addBtn = document.getElementById('add-kb-btn');
+        if (this.currentUser.role === 'admin' || this.currentUser.role === 'support_agent') {
+            addBtn.classList.remove('hidden');
+            addBtn.onclick = () => this.showKbModal();
+        } else {
+            addBtn.classList.add('hidden');
+        }
+    }
+
+    searchKnowledgeBase(query) {
+        const container = document.getElementById('kb-results');
+        if (!query.trim()) {
+            this.displayKnowledgeBase(this.knowledgeBase, container);
+            return;
+        }
+
+        const results = this.knowledgeBase.filter(article =>
+            article.title.toLowerCase().includes(query.toLowerCase()) ||
+            article.solution.toLowerCase().includes(query.toLowerCase()) ||
+            article.keywords.some(keyword => keyword.toLowerCase().includes(query.toLowerCase()))
+        );
+
+        this.displayKnowledgeBase(results, container);
+    }
+
+    displayKnowledgeBase(articles, container) {
+        if (articles.length === 0) {
+            container.innerHTML = '<p class="text-center">No articles found.</p>';
+            return;
+        }
+
+        container.innerHTML = articles.map(article => `
+            <div class="kb-article">
+                <div class="kb-category">${this.escapeHtml(article.category)}</div>
+                <h4>${this.escapeHtml(article.title)}</h4>
+                <div class="kb-solution">${marked.parse(article.solution)}</div>
+                ${(this.currentUser.role === 'admin' || this.currentUser.role === 'support_agent') ? `
+                    <div class="kb-actions">
+                        <button class="btn btn--sm btn--secondary" onclick="app.showKbModal(${article.id})">Edit</button>
+                        <button class="btn btn--sm btn--danger" onclick="app.deleteKnowledge(${article.id})">Delete</button>
+                    </div>
+                ` : ""}
+            </div>
+        `).join('');
+    }
+
+    // Modal for add/edit KB
+    showKbModal(articleId = null) {
+        const modal = document.getElementById('kb-modal');
+        const form = document.getElementById('kb-form');
+
+        if (articleId) {
+            const article = this.knowledgeBase.find(a => a.id === articleId);
+            if (!article) return;
+            document.getElementById('kb-id').value = article.id;
+            document.getElementById('kb-title').value = article.title;
+            document.getElementById('kb-category').value = article.category;
+            document.getElementById('kb-solution').value = article.solution;
+            document.getElementById('kb-keywords').value = article.keywords.join(', ');
+            document.getElementById('kb-modal-title').textContent = "Edit Knowledge";
+        } else {
+            form.reset();
+            document.getElementById('kb-id').value = '';
+            document.getElementById('kb-modal-title').textContent = "Add Knowledge";
+        }
+
+        modal.classList.remove('hidden');
+
+        // Cancel button
+        document.getElementById('cancel-kb').onclick = () => this.closeModal('kb-modal');
+
+        // Submit form
+        form.onsubmit = (e) => {
+            e.preventDefault();
+            this.saveKnowledge();
+        };
+    }
+
+    saveKnowledge() {
+        const id = document.getElementById('kb-id').value;
+        const title = document.getElementById('kb-title').value.trim();
+        const category = document.getElementById('kb-category').value.trim();
+        const solution = document.getElementById('kb-solution').value.trim();
+        const keywords = document.getElementById('kb-keywords').value.trim().split(',').map(k => k.trim());
+
+        if (!title || !category || !solution) {
+            alert("All fields except keywords are required.");
+            return;
+        }
+
+        if (id) {
+            // Update existing
+            const article = this.knowledgeBase.find(a => a.id == id);
+            if (article) {
+                article.title = title;
+                article.category = category;
+                article.solution = solution;
+                article.keywords = keywords;
+            }
+        } else {
+            // Add new
+            const newArticle = {
+                id: this.knowledgeBase.length ? Math.max(...this.knowledgeBase.map(a => a.id)) + 1 : 1,
+                title, category, solution, keywords
+            };
+            this.knowledgeBase.push(newArticle);
+        }
+
+        this.closeModal('kb-modal');
+        this.renderKnowledgeBase();
+    }
+
+    deleteKnowledge(id) {
+        if (!confirm("Are you sure you want to delete this knowledge entry?")) return;
+        this.knowledgeBase = this.knowledgeBase.filter(a => a.id !== id);
+        this.renderKnowledgeBase();
+    }
+
+
     async initializeGoogleAuth() {
         try {
             const response = await fetch('http://localhost:8000/auth/config');

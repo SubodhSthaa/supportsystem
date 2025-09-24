@@ -198,17 +198,78 @@
                 </div>
                 <div id="users-list" class="users-grid"></div>
             </div>
+<!-- Knowledge Base -->
+<div id="knowledge-base" class="view hidden">
+  <div class="view-header">
+    <h2>Knowledge Base</h2>
+    <input type="text" id="kb-search" class="form-control" placeholder="Search knowledge base...">
+    <button id="add-kb-btn" class="btn btn--primary hidden">Add Knowledge</button>
+  </div>
+  <div id="kb-results" class="kb-grid"></div>
+</div>
 
-            <!-- Knowledge Base -->
-            <div id="knowledge-base" class="view hidden">
-                <div class="view-header">
-                    <h2>Knowledge Base</h2>
-                    <input type="text" id="kb-search" class="form-control" placeholder="Search knowledge base...">
-                </div>
-                <div id="kb-results" class="kb-grid"></div>
-            </div>
-        </main>
+<!-- Knowledge Base Modal -->
+<div id="kb-modal" class="modal hidden">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3 id="kb-modal-title">Add Knowledge</h3>
+      <button id="close-kb-modal" class="modal-close">&times;</button>
     </div>
+    <div class="modal-body">
+      <form id="kb-form">
+        <input type="hidden" id="kb-id">
+        <div class="form-group">
+          <label class="form-label">Title</label>
+          <input type="text" id="kb-title" class="form-control" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Category</label>
+          <input type="text" id="kb-category" class="form-control" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Solution (Markdown Supported)</label>
+          <textarea id="kb-solution" class="form-control" rows="6" required></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Keywords</label>
+          <input type="text" id="kb-keywords" class="form-control">
+        </div>
+        <div class="modal-actions">
+          <button type="submit" class="btn btn--primary">Save</button>
+          <button type="button" id="cancel-kb" class="btn btn--secondary">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+<button id="add-kb-btn" class="btn btn--primary hidden">Add Knowledge</button>
+
+<div id="kb-modal" class="modal hidden">
+  <div class="modal-content">
+    <h3 id="kb-modal-title">Add Knowledge</h3>
+    <form id="kb-form">
+      <input type="hidden" id="kb-id">
+      <div class="form-group">
+        <label>Title</label>
+        <input id="kb-title" class="form-control" required>
+      </div>
+      <div class="form-group">
+        <label>Category</label>
+        <input id="kb-category" class="form-control" required>
+      </div>
+      <div class="form-group">
+        <label>Solution (Markdown supported)</label>
+        <textarea id="kb-solution" class="form-control" rows="6" required></textarea>
+      </div>
+      <div class="form-group">
+        <label>Keywords (comma separated)</label>
+        <input id="kb-keywords" class="form-control">
+      </div>
+      <button type="submit" class="btn btn--primary">Save</button>
+      <button type="button" id="cancel-kb" class="btn btn--secondary">Cancel</button>
+    </form>
+  </div>
+</div>
 
     <!-- Ticket Detail Modal -->
     <div id="ticket-modal" class="modal hidden">
@@ -307,5 +368,7 @@
     </div>
 
     <script src="app.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
 </body>
 </html>
