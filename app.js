@@ -1367,44 +1367,6 @@ class BankingSupportApp {
         }
     }
 
-    // Knowledge Base
-    renderKnowledgeBase() {
-        const container = document.getElementById('kb-results');
-        this.displayKnowledgeBase(this.knowledgeBase, container);
-    }
-
-    searchKnowledgeBase(query) {
-        const container = document.getElementById('kb-results');
-        
-        if (!query.trim()) {
-            this.displayKnowledgeBase(this.knowledgeBase, container);
-            return;
-        }
-
-        const results = this.knowledgeBase.filter(article => 
-            article.title.toLowerCase().includes(query.toLowerCase()) ||
-            article.solution.toLowerCase().includes(query.toLowerCase()) ||
-            article.keywords.some(keyword => keyword.toLowerCase().includes(query.toLowerCase()))
-        );
-
-        this.displayKnowledgeBase(results, container);
-    }
-
-    displayKnowledgeBase(articles, container) {
-        if (articles.length === 0) {
-            container.innerHTML = '<p class="text-center">No articles found.</p>';
-            return;
-        }
-
-        container.innerHTML = articles.map(article => `
-            <div class="kb-article">
-                <div class="kb-category">${article.category}</div>
-                <h4>${this.escapeHtml(article.title)}</h4>
-                <div class="kb-solution">${this.escapeHtml(article.solution)}</div>
-            </div>
-        `).join('');
-    }
-
     // Utility Methods
     closeModal(modalId) {
         document.getElementById(modalId).classList.add('hidden');

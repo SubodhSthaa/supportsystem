@@ -23,7 +23,7 @@ MAX_HISTORY_MESSAGES = 10
 MAX_TOKENS = 2048
 
 # Google OAuth Config
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "demo-google-client-id.apps.googleusercontent.com")
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 JWT_SECRET = os.getenv("JWT_SECRET", secrets.token_urlsafe(32))
 
 # ----------------------------
@@ -642,9 +642,17 @@ async def google_auth(auth_request: GoogleAuthRequest):
 @app.get("/auth/config")
 async def get_auth_config():
     """Get authentication configuration for frontend"""
+    # Only enable Google SSO if we have a real client ID (not empty or demo)
+    google_enabled = (
+        bool(GOOGLE_CLIENT_ID) and 
+        GOOGLE_CLIENT_ID != "demo-google-client-id.apps.googleusercontent.com" and
+        len(GOOGLE_CLIENT_ID.strip()) > 0 and
+        GOOGLE_CLIENT_ID.endswith('.apps.googleusercontent.com')
+    )
+    
     return JSONResponse({
         "google_client_id": GOOGLE_CLIENT_ID,
-        "google_enabled": bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_ID != "your-google-client-id.apps.googleusercontent.com")
+        "google_enabled": google_enabled
     })
 
 @app.get("/health")
