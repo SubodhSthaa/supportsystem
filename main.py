@@ -23,7 +23,7 @@ MAX_HISTORY_MESSAGES = 10
 MAX_TOKENS = 2048
 
 # Google OAuth Config
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "your-google-client-id.apps.googleusercontent.com")
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "demo-google-client-id.apps.googleusercontent.com")
 JWT_SECRET = os.getenv("JWT_SECRET", secrets.token_urlsafe(32))
 
 # ----------------------------
