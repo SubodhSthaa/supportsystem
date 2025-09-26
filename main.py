@@ -13,6 +13,9 @@ from typing import Optional
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token
 import secrets
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ----------------------------
 # Config
