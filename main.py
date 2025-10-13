@@ -464,6 +464,7 @@ def clean_ai_response(response: str) -> str:
         r'\(.*?\)',  # Remove content in parentheses that might be gibberish
         r'[^\w\s.,!?;:()\-@#$/]',  # Keep only common punctuation
         r'\b(\w*[0-9]+\w*)\b',  # Remove words with numbers mixed in
+        r'_{2,}',  # Remove double underscores and more
     ]
     
     for pattern in gibberish_patterns:
