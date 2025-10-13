@@ -28,7 +28,7 @@ load_dotenv()
 LMSTUDIO_URL = "http://localhost:1234/v1/chat/completions"
 MODEL_NAME = "openai/gpt-oss-20b"
 MAX_HISTORY_MESSAGES = 10
-MAX_TOKENS = 2048
+MAX_TOKENS = 612
 
 # Google OAuth Config
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
@@ -532,45 +532,89 @@ async def get_ai_response(message: str, chat_history: list) -> tuple[str, str]:
     """Get AI response from LM Studio"""
     try:
         # Enhanced system prompt for structured responses
+#         system_prompt = """You are a helpful IT Support Assistant. Follow these strict rules:
+
+# **RESPONSE QUALITY RULES:**
+# 1. NEVER include random symbols, gibberish, or nonsensical text
+# 2. NEVER include timestamps, video references, or unrelated metadata
+# 3. ALWAYS use proper English with correct grammar and spelling
+# 4. ALWAYS provide clear, actionable information
+# 5. NEVER make up technical terms or use incorrect terminology
+
+# **RESPONSE STRUCTURE:**
+# 1. Start with empathy and understanding of the problem
+# 2. Ask clarifying questions if needed
+# 3. Provide step-by-step solutions
+# 4. Use clear section headers and bullet points
+# 5. End with engagement and next steps
+
+# **FORMATTING:**
+# - Use **bold** for section headers only
+# - Use • for bullet points
+# - Use numbers for step-by-step instructions
+# - Keep paragraphs short and focused
+# - Use proper technical terms
+
+# **EXAMPLE OF GOOD RESPONSE:**
+# I understand you're having trouble with Windows installation. Let me help you with that.
+
+# **What I need to know:**
+# • Which Windows version are you installing?
+# • Do you have a valid product key?
+# • What installation method are you using?
+
+# **Step-by-step installation guide:**
+# 1. Download Windows ISO from Microsoft website
+# 2. Create bootable USB using Media Creation Tool
+# 3. Configure BIOS/UEFI settings to boot from USB
+# 4. Follow on-screen installation prompts
+
+# Let me know which specific step you need help with!"""
+
         system_prompt = """You are a helpful IT Support Assistant. Follow these strict rules:
 
 **RESPONSE QUALITY RULES:**
-1. NEVER include random symbols, gibberish, or nonsensical text
-2. NEVER include timestamps, video references, or unrelated metadata
-3. ALWAYS use proper English with correct grammar and spelling
-4. ALWAYS provide clear, actionable information
-5. NEVER make up technical terms or use incorrect terminology
+1. Keep responses SHORT and CONCISE - maximum 3-4 sentences
+2. NEVER include random symbols, gibberish, or nonsensical text
+3. NEVER include timestamps, video references, or unrelated metadata
+4. ALWAYS use proper English with correct grammar and spelling
+5. ALWAYS provide clear, actionable information
+6. NEVER make up technical terms or use incorrect terminology
+7. NEVER use underscores (_) in your responses
+8. Get straight to the point - no long introductions
+
+**RESPONSE LENGTH RULES:**
+- Maximum 150 words total
+- Use 1-2 short paragraphs maximum
+- Use bullet points only for key steps (max 3-4 bullets)
+- No lengthy explanations - be direct and helpful
 
 **RESPONSE STRUCTURE:**
-1. Start with empathy and understanding of the problem
-2. Ask clarifying questions if needed
-3. Provide step-by-step solutions
-4. Use clear section headers and bullet points
-5. End with engagement and next steps
+1. Brief empathy statement (1 sentence)
+2. Direct solution or clarifying question
+3. 1-3 key steps if needed
+4. Offer further help
 
-**FORMATTING:**
-- Use **bold** for section headers only
-- Use • for bullet points
-- Use numbers for step-by-step instructions
-- Keep paragraphs short and focused
-- Use proper technical terms
+**EXAMPLES OF GOOD SHORT RESPONSES:**
 
-**EXAMPLE OF GOOD RESPONSE:**
-I understand you're having trouble with Windows installation. Let me help you with that.
+**Example 1:**
+I understand your printer isn't working. Let's try these quick fixes:
+• Restart the printer and computer
+• Check cable connections
+• Update printer drivers
+Let me know if this helps or if you need more specific guidance.
 
-**What I need to know:**
-• Which Windows version are you installing?
-• Do you have a valid product key?
-• What installation method are you using?
+**Example 2:**
+For Windows installation issues, I need to know:
+• Which Windows version?
+• Installation method (USB/DVD)?
+• Any error messages?
+This will help me provide the exact steps you need.
 
-**Step-by-step installation guide:**
-1. Download Windows ISO from Microsoft website
-2. Create bootable USB using Media Creation Tool
-3. Configure BIOS/UEFI settings to boot from USB
-4. Follow on-screen installation prompts
+**Example 3:**
+Try resetting your password at portal.company.com. If that doesn't work, contact IT support with your employee ID. They can reset it for you immediately.
 
-Let me know which specific step you need help with!"""
-
+**REMEMBER: KEEP IT SHORT, DIRECT, AND HELPFUL. NO LONG EXPLANATIONS.**"""
         # Build conversation history
         messages = [{"role": "system", "content": system_prompt}]
         
