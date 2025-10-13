@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 import base64
 import hmac
 import hashlib
+import re  # Added missing import
 
 load_dotenv()
 
@@ -430,29 +431,144 @@ def get_department_for_keyword(keyword: str) -> str:
     conn.close()
     return result[0] if result else "General"
 
+def validate_response(response: str) -> bool:
+    """Validate that the AI response is clean and meaningful"""
+    # Check for common gibberish indicators
+    gibberish_indicators = [
+        'VIDEO', 'breaking', 'commentators', '2023', '16 Hours',
+        'fit by us', 'DSCAPUT', 'OPAT', 'C-aunchy', 'bookstore USB'
+    ]
+    
+    if any(indicator in response for indicator in gibberish_indicators):
+        return False
+    
+    # Check response length and quality
+    if len(response.strip()) < 20:
+        return False
+        
+    # Check for reasonable word length and structure
+    words = response.split()
+    if len(words) < 5:
+        return False
+        
+    return True
+
+def clean_ai_response(response: str) -> str:
+    """Clean and format AI responses to remove gibberish and random symbols"""
+    # Remove random symbols and gibberish patterns
+    cleaned = response
+    
+    # Remove common gibberish patterns
+    gibberish_patterns = [
+        r'\*.*?\*',  # Remove content between asterisks
+        r'\(.*?\)',  # Remove content in parentheses that might be gibberish
+        r'[^\w\s.,!?;:()\-@#$/]',  # Keep only common punctuation
+        r'\b(\w*[0-9]+\w*)\b',  # Remove words with numbers mixed in
+    ]
+    
+    for pattern in gibberish_patterns:
+        cleaned = re.sub(pattern, '', cleaned)
+    
+    # Fix common OCR/formatting issues
+    replacements = {
+        'fit by us that is solution': 'we will find a solution',
+        'DSCAPUT': 'BIOS/UEFI',
+        'OPAT': 'DVD',
+        'C-aunchy': 'clean',
+        'bookstore USB': 'bootable USB',
+        'portfetch': 'partition',
+        'Ax4': 'F12',
+        '1/2': 'F2',
+    }
+    
+    for wrong, correct in replacements.items():
+        cleaned = cleaned.replace(wrong, correct)
+    
+    # Remove extra whitespace and clean up formatting
+    cleaned = re.sub(r'\s+', ' ', cleaned)  # Replace multiple spaces with single space
+    cleaned = re.sub(r'\.\s+\.', '.', cleaned)  # Fix multiple dots
+    cleaned = cleaned.strip()
+    
+    return cleaned
+
+def format_ai_response(response: str) -> str:
+    """Ensure AI responses follow clean formatting standards"""
+    # First clean the response
+    cleaned_response = clean_ai_response(response)
+    
+    # Structure the response properly
+    lines = cleaned_response.split('\n')
+    formatted_lines = []
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+            
+        # Skip lines that are likely gibberish
+        if len(line) < 3 or any(word in line.lower() for word in ['video', 'breaking', 'commentators']):
+            continue
+            
+        # Format bullet points properly
+        if line.startswith(('-', '•', '*')) and len(line) > 3:
+            formatted_lines.append(f"• {line[1:].strip()}")
+        elif re.match(r'^\d+[\.\)]', line):  # Numbered lists
+            formatted_lines.append(line)
+        elif len(line) > 20:  # Only include substantial lines
+            formatted_lines.append(line)
+    
+    # Join with proper spacing
+    formatted = '\n\n'.join(formatted_lines)
+    
+    # Ensure it ends with engagement
+    if not any(phrase in formatted.lower() for phrase in 
+               ['let me know', 'please share', 'tell me', 'keep me updated', 'update me']):
+        formatted += "\n\nLet me know if this helps or if you need more specific guidance!"
+    
+    return formatted
+
 async def get_ai_response(message: str, chat_history: list) -> tuple[str, str]:
     """Get AI response from LM Studio"""
     try:
-        # Prepare system prompt for IT support context
-        system_prompt = """You are a helpful IT Support Assistant. Your role is to:
+        # Enhanced system prompt for structured responses
+        system_prompt = """You are a helpful IT Support Assistant. Follow these strict rules:
 
-1. Provide clear, step-by-step solutions for technical problems
-2. Ask clarifying questions when needed
-3. Be professional but friendly
-4. Focus on IT support, e-banking issues, and general technical help
-5. Keep responses concise but comprehensive
-6. If you cannot solve an issue completely, acknowledge it and suggest creating a support ticket
+**RESPONSE QUALITY RULES:**
+1. NEVER include random symbols, gibberish, or nonsensical text
+2. NEVER include timestamps, video references, or unrelated metadata
+3. ALWAYS use proper English with correct grammar and spelling
+4. ALWAYS provide clear, actionable information
+5. NEVER make up technical terms or use incorrect terminology
 
-Common areas you help with:
-- Password resets and login issues
-- Software troubleshooting
-- Hardware problems
-- Network connectivity
-- E-banking and online banking issues
-- Email and communication tools
-- System performance issues
+**RESPONSE STRUCTURE:**
+1. Start with empathy and understanding of the problem
+2. Ask clarifying questions if needed
+3. Provide step-by-step solutions
+4. Use clear section headers and bullet points
+5. End with engagement and next steps
 
-Always be helpful and solution-oriented."""
+**FORMATTING:**
+- Use **bold** for section headers only
+- Use • for bullet points
+- Use numbers for step-by-step instructions
+- Keep paragraphs short and focused
+- Use proper technical terms
+
+**EXAMPLE OF GOOD RESPONSE:**
+I understand you're having trouble with Windows installation. Let me help you with that.
+
+**What I need to know:**
+• Which Windows version are you installing?
+• Do you have a valid product key?
+• What installation method are you using?
+
+**Step-by-step installation guide:**
+1. Download Windows ISO from Microsoft website
+2. Create bootable USB using Media Creation Tool
+3. Configure BIOS/UEFI settings to boot from USB
+4. Follow on-screen installation prompts
+
+Let me know which specific step you need help with!"""
 
         # Build conversation history
         messages = [{"role": "system", "content": system_prompt}]
@@ -564,20 +680,20 @@ def get_or_create_user(google_user_info: dict) -> dict:
             VALUES (?, ?, ?, ?, ?, ?)
         """, (google_user_info["sub"], google_user_info["email"], 
               google_user_info["name"], google_user_info.get("picture"), 
-              role, department))
-        
-        user_id = cursor.lastrowid
-        user_data = {
-            "id": user_id,
-            "google_id": google_user_info["sub"],
-            "email": google_user_info["email"],
-            "name": google_user_info["name"],
-            "picture": google_user_info.get("picture"),
-            "role": role,
-            "department": department,
-            "active": True
-        }
-    
+              role, department))    
+
+        user_id = cursor.lastrowid  
+        user_data = {   
+            "id": user_id,  
+            "google_id": google_user_info["sub"],   
+            "email": google_user_info["email"], 
+            "name": google_user_info["name"],   
+            "picture": google_user_info.get("picture"), 
+            "role": role,   
+            "department": department,   
+            "active": True  
+        }   
+
     conn.commit()
     conn.close()
     
@@ -636,6 +752,15 @@ async def chat_endpoint(data: ChatMessage, request: Request):
 
         # --- Step 2: No KB match, call AI ---
         ai_response, issue_type = await get_ai_response(data.message, chat_history)
+        
+        # Validate and clean the AI response
+        if not validate_response(ai_response):
+            logger.warning("AI response failed validation, using fallback")
+            ai_response = "I apologize, but I'm having trouble generating a proper response. Please try rephrasing your question or contact support for immediate assistance."
+        else:
+            # Clean and format the AI response
+            cleaned_response = clean_ai_response(ai_response)
+            ai_response = format_ai_response(cleaned_response)
         
         # Save both user message and AI response
         save_message_to_history(session_id, "user", data.message, data.user_id)
