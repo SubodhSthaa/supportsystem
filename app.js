@@ -196,10 +196,10 @@ class BankingSupportApp {
             },
             {
                 id: 2,
-                username: "it.support",
+                username: "supportdesk",
                 password: "password123",
                 role: "support_agent",
-                name: "IT Support Agent",
+                name: "Support Agent",
                 department: "IT",
                 email: "it.support@bank.com",
                 active: true
