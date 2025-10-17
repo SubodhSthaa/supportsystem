@@ -7,9 +7,6 @@ it_support_bert_results/
 it_support_model/
 results/
 mainapp.py
-training_bert.py
-check_model.py
-convert_safetensors.py
 training_bert_gpu.py
 benchmark.py
 cudatest.py
