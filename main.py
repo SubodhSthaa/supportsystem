@@ -1318,6 +1318,7 @@ async def not_found_handler(request: Request, exc):
         content={"error": "Endpoint not found"}
     )
 
+
 @app.exception_handler(500)
 async def internal_error_handler(request: Request, exc):
     logger.error(f"Internal server error: {str(exc)}")
@@ -1325,6 +1326,7 @@ async def internal_error_handler(request: Request, exc):
         status_code=500,
         content={"error": "Internal server error"}
     )
+
 
 if __name__ == "__main__":
     import uvicorn
