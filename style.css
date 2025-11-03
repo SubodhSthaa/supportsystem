@@ -1194,7 +1194,7 @@ select.form-control {
     color: var(--color-text-secondary);
     margin: 0 0 var(--space-16) 0;
     display: -webkit-box;
-    -webkit-line-clamp: 2;
+    -webkit-line-clamp: 2; 
     -webkit-box-orient: vertical;
     overflow: hidden;
 }
