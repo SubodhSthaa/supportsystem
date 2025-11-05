@@ -216,81 +216,79 @@ class BankingSupportApp {
             }
         ];
 
-        // this.departments = [
-        //     { id: 1, name: "IT", description: "Hardware, OS, Network, AD/Internet access" },
-        //     { id: 2, name: "Digital Banking", description: "Digital Banking software issues" },
-        //     { id: 3, name: "Operations", description: "Core banking access, teller-related issues" },
-        //     { id: 4, name: "AML/CFT", description: "Compliance system issues" },
-        //     { id: 5, name: "Loan", description: "Loan management software issues" }
-        // ];
-        // this.knowledgeBase = [
-        //     {
-        //         id: 1,
-        //         title: "Password Reset",
-        //         category: "Authentication",
-        //         solution: "To reset your password, contact your IT administrator or use the self-service portal at portal.bank.com",
-        //         keywords: ["password", "reset", "login", "authentication"]
-        //     },
-        //     {
-        //         id: 2,
-        //         title: "Printer Not Working",
-        //         category: "Hardware",
-        //         solution: "1. Check if printer is powered on\n2. Verify cable connections\n3. Check if paper is loaded\n4. Restart the printer\n5. If issue persists, contact IT support",
-        //         keywords: ["printer", "print", "hardware", "not working"]
-        //     },
-        //     {
-        //         id: 3,
-        //         title: "Digital Banking App Error",
-        //         category: "Software",
-        //         solution: "Clear browser cache, disable browser extensions, or try using a different browser. If error persists, contact Digital Banking team.",
-        //         keywords: ["digital banking", "app", "error", "software"]
-        //     },
-        //     {
-        //         id: 4,
-        //         title: "Network Connection Issues",
-        //         category: "Network",
-        //         solution: "1. Check network cables\n2. Restart your computer\n3. Try connecting to a different network\n4. Contact IT if problem persists",
-        //         keywords: ["network", "connection", "internet", "offline"]
-        //     },
-        //     {
-        //         id: 5,
-        //         title: "Core Banking System Access",
-        //         category: "Software",
-        //         solution: "If you cannot access the core banking system, verify your credentials and check with Operations team for system status.",
-        //         keywords: ["core banking", "access", "login", "system"]
-        //     }
-        // ];
+        this.departments = [
+            { id: 1, name: "IT", description: "Hardware, OS, Network, AD/Internet access" },
+            { id: 2, name: "Digital Banking", description: "Digital Banking software issues" },
+            { id: 3, name: "Operations", description: "Core banking access, teller-related issues" }
+        ];
+        this.knowledgeBase = [
+            {
+                id: 1,
+                title: "Password Reset",
+                category: "Authentication",
+                solution: "To reset your password, contact your IT administrator or use the self-service portal at portal.bank.com",
+                keywords: ["password", "reset", "login", "authentication"]
+            },
+            {
+                id: 2,
+                title: "Printer Not Working",
+                category: "Hardware",
+                solution: "1. Check if printer is powered on\n2. Verify cable connections\n3. Check if paper is loaded\n4. Restart the printer\n5. If issue persists, contact IT support",
+                keywords: ["printer", "print", "hardware", "not working"]
+            },
+            {
+                id: 3,
+                title: "Digital Banking App Error",
+                category: "Software",
+                solution: "Clear browser cache, disable browser extensions, or try using a different browser. If error persists, contact Digital Banking team.",
+                keywords: ["digital banking", "app", "error", "software"]
+            },
+            {
+                id: 4,
+                title: "Network Connection Issues",
+                category: "Network",
+                solution: "1. Check network cables\n2. Restart your computer\n3. Try connecting to a different network\n4. Contact IT if problem persists",
+                keywords: ["network", "connection", "internet", "offline"]
+            },
+            {
+                id: 5,
+                title: "Core Banking System Access",
+                category: "Software",
+                solution: "If you cannot access the core banking system, verify your credentials and check with Operations team for system status.",
+                keywords: ["core banking", "access", "login", "system"]
+            }
+        ];
 
-        // this.routingRules = {
-        //     "hardware": "IT",
-        //     "software": "IT",
-        //     "network": "IT",
-        //     "password": "IT",
-        //     "authentication": "IT",
-        //     "digital banking": "Digital Banking",
-        //     "mobile app": "Digital Banking",
-        //     "core banking": "Operations",
-        //     "teller": "Operations",
-        //     "compliance": "AML/CFT",
-        //     "loan": "Loan"
-        // };
+        this.routingRules = {
+            "hardware": "IT",
+            "software": "IT",
+            "network": "IT",
+            "password": "IT",
+            "authentication": "IT",
+            "digital banking": "Digital Banking",
+            "mobile app": "Digital Banking",
+            "core banking": "Operations",
+            "teller": "Operations",
+            "compliance": "AML/CFT",
+            "loan": "Loan"
+        };
 
-        // this.tickets = [
-        //     {
-        //         id: 1001,
-        //         title: "Cannot access digital banking portal",
-        //         description: "Getting error message when trying to log into the digital banking system",
-        //         category: "Software",
-        //         priority: "High",
-        //         status: "Open",
-        //         createdBy: 1,
-        //         assignedTo: null,
-        //         department: "Digital Banking",
-        //         createdAt: new Date().toISOString(),
-        //         updatedAt: new Date().toISOString(),
-        //         comments: []
-        //     }
-        // ];
+        this.tickets = [
+            {
+                id: 1001,
+                title: "Cannot access digital banking portal",
+                description: "Getting error message when trying to log into the digital banking system",
+                category: "Software",
+                priority: "High",
+                status: "Open",
+                createdBy: 1,
+                assignedTo: null,
+                department: "Digital Banking",
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                comments: []
+            }
+        ];
     }
 
     bindEvents() {
