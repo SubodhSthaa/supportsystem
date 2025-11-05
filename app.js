@@ -1392,6 +1392,4 @@ class BankingSupportApp {
     }
 
 }
-
-// Initialize the application (script is at end of body, so DOM is ready)
 window.app = new BankingSupportApp();
