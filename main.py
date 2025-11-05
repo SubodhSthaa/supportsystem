@@ -695,7 +695,7 @@ def get_or_create_user(google_user_info: dict) -> dict:
             "name": google_user_info["name"],   
             "picture": google_user_info.get("picture"), 
             "role": role,   
-            "department": department,   
+            "department": department,
             "active": True  
         }   
 
