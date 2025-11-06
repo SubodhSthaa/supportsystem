@@ -25,7 +25,7 @@ load_dotenv()
 # ----------------------------
 # Config
 # ----------------------------
-LMSTUDIO_URL = "http://localhost:1234/v1/chat/completions"
+LMSTUDIO_URL = "http://localhost:1030/v1/chat/completions"
 MODEL_NAME = "openai/gpt-oss-20b"
 MAX_HISTORY_MESSAGES = 10
 MAX_TOKENS = 612
