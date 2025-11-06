@@ -287,6 +287,20 @@ class BankingSupportApp {
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
                 comments: []
+            },
+            {
+                id: 1002,
+                title: "Printer not working in branch office",
+                description: "The printer in the main branch is not responding when trying to print customer documents.",
+                category: "Hardware",
+                priority: "Medium",
+                status: "In Progress",
+                createdBy: 1,
+                assignedTo: 2,
+                department: "IT",
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                comments: ['printer doesnt work properly']
             }
         ];
     }
