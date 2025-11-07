@@ -1,4 +1,4 @@
-# Banking Support System
+# Ticketing Support System
 
 A simple full-stack prototype:
 - Frontend: `index.html`, `style.css`, `app.js`
